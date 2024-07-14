@@ -1,0 +1,11 @@
+{
+  "watch": ["src"],
+  "ignore": ["src/**/__tests__/*"],
+  "ext": "ts",
+  "execMap": {
+    "ts": "cross-env NODE_NO_WARNINGS=1 node --experimental-specifier-resolution=node --loader ./scripts/loader.js -r dotenv/config"
+  },
+  "events": {
+    "start": "npm run lint"
+  }
+}

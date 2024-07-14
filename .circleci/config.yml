@@ -1,0 +1,203 @@
+version: 2.1
+
+orbs:
+  aws-cli: circleci/aws-cli@4.1.3
+
+executors:
+  node:
+    docker:
+      - image: cimg/node:20.15.0
+    resource_class: arm.medium
+    environment:
+      NODE_OPTIONS: --max-old-space-size=4096
+  large-node:
+    docker:
+      - image: cimg/node:20.15.0
+    resource_class: arm.large
+    environment:
+      NODE_OPTIONS: --max-old-space-size=8192
+  xlarge-node:
+    docker:
+      - image: cimg/node:20.15.0
+    resource_class: arm.xlarge
+    environment:
+      NODE_OPTIONS: --max-old-space-size=16384
+
+commands:
+  prepare:
+    steps:
+      - restore_cache:
+          key: code-{{ .Environment.CIRCLE_SHA1 }}
+      - restore_cache:
+          keys:
+            - node_modules-arm-{{ checksum "package-lock.json" }}
+            - node_modules-arm
+  prepare-deploy:
+    steps:
+      - aws-cli/setup:
+          role_arn: ${ROLE_ARN}
+      - prepare
+
+  deploy:
+    steps:
+      - run:
+          name: Deploy
+          command: bash scripts/deploy.sh
+          
+  deploy_lambda:
+    steps:
+      - run:
+          name: Deploy Lambda
+          command: bash scripts/deploy-lambda.sh
+
+jobs:
+  checkout_code:
+    executor: node
+    steps:
+      - checkout
+      - save_cache:
+          key: code-{{ .Environment.CIRCLE_SHA1 }}
+          paths:
+            - ~/project
+
+  install:
+    executor: node
+    steps:
+      - prepare
+      - run:
+          name: Install dependencies
+          command: bash scripts/install.sh
+      - save_cache:
+          key: node_modules-arm-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
+
+  lint:
+    executor: node
+    steps:
+      - prepare
+      - run:
+          name: Run lint
+          command: npm run lint
+
+  test:
+    executor: node
+    steps:
+      - prepare
+      - run:
+          name: Run API unit test
+          command: npm run test
+
+  dev:
+    executor: node
+    steps:
+      - prepare-deploy
+      - deploy
+
+
+  sit:
+    executor: node
+    steps:
+      - prepare-deploy
+      - deploy
+
+  uat:
+    executor: node
+    steps:
+      - prepare-deploy
+      - deploy
+
+  stg:
+    executor: node
+    steps:
+      - prepare-deploy
+      - deploy
+
+  prd:
+    executor: node
+    steps:
+      - prepare-deploy
+      - deploy
+
+workflows:
+  version: 2
+  all:
+    jobs:
+      - checkout_code:
+          filters:
+            branches:
+              only:
+                - dev
+                - sit
+                - uat
+                - stg
+                - main
+      - install:
+          requires:
+            - checkout_code
+          context: github
+      - lint:
+          requires:
+            - install
+      - test:
+          requires:
+            - install
+      - approval:
+          type: approval
+          filters:
+            branches:
+              only:
+                - uat
+                - stg
+                - main
+          requires:
+            - lint
+            - test
+      - dev:
+          requires:
+            - lint
+            - test
+          context:
+            - application-dev
+            - sentry
+          filters:
+            branches:
+              only: dev
+      # - sit:
+      #     requires:
+      #       - lint
+      #       - type-check
+      #       - test
+      #     context:
+      #       - application-sit
+      #       - sentry
+      #     filters:
+      #       branches:
+      #         only: sit
+      # - uat:
+      #     requires:
+      #       - approval
+      #     context:
+      #       - application-uat
+      #       - sentry
+      #     filters:
+      #       branches:
+      #         only: uat
+      # - stg:
+      #     requires:
+      #       - approval
+      #     context:
+      #       - application-stg
+      #       - sentry
+      #     filters:
+      #       branches:
+      #         only: stg
+      # - prd:
+      #     requires:
+      #       - approval
+      #     context:
+      #       - application-prd
+      #       - sentry
+      #     filters:
+      #       branches:
+      #         only: main
