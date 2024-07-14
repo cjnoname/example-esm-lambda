@@ -17,7 +17,7 @@ export default {
       type: "module"
     }
   },
-  entry: "src/index.ts",
+  entry: "src/lambda.ts",
   externals: ["aws-sdk"],
   target: "node",
   // devtool: slsw.lib.webpack.isLocal ? "source-map" : undefined,
